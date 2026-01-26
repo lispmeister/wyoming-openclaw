@@ -1,92 +1,41 @@
 ---
 name: wyoming-clawdbot
-description: Manage Wyoming-Clawdbot bridge service for Home Assistant voice control integration.
+description: Wyoming Protocol bridge for Home Assistant voice assistant integration with Clawdbot.
 homepage: https://github.com/vglafirov/wyoming-clawdbot
-metadata: {"clawdbot":{"emoji":"🎤","requires":{"bins":["systemctl"]}}}
+metadata: {"clawdbot":{"emoji":"🎤","category":"home-automation","tags":["home-assistant","voice","wyoming","assist"]}}
 ---
 
 # Wyoming-Clawdbot
 
-Wyoming Protocol bridge connecting Home Assistant Assist to Clawdbot for voice control.
+Bridge Home Assistant Assist voice commands to Clawdbot via Wyoming Protocol.
 
-## Architecture
+## What it does
 
-```
-Voice → Home Assistant → STT → Wyoming-Clawdbot → Clawdbot → TTS → Speaker
-```
+- Receives voice commands from Home Assistant Assist
+- Forwards them to Clawdbot for processing
+- Returns AI responses to be spoken by Home Assistant TTS
 
-## Service Management
+## Setup
 
-Check status:
+1. Clone and run the server:
 ```bash
-systemctl status wyoming-clawdbot
+git clone https://github.com/vglafirov/wyoming-clawdbot.git
+cd wyoming-clawdbot
+docker compose up -d
 ```
 
-Start/stop/restart:
-```bash
-sudo systemctl start wyoming-clawdbot
-sudo systemctl stop wyoming-clawdbot
-sudo systemctl restart wyoming-clawdbot
-```
+2. Add Wyoming integration in Home Assistant:
+   - Settings → Devices & Services → Add Integration
+   - Search "Wyoming Protocol"
+   - Enter host:port (e.g., `192.168.1.100:10600`)
 
-Enable on boot:
-```bash
-sudo systemctl enable wyoming-clawdbot
-```
+3. Configure Voice Assistant pipeline to use "clawdbot" as Conversation Agent
 
-## Logs
+## Requirements
 
-View recent logs:
-```bash
-journalctl -u wyoming-clawdbot -n 50 --no-pager
-```
-
-Follow logs in real-time:
-```bash
-journalctl -u wyoming-clawdbot -f
-```
-
-## Docker (alternative)
-
-If running via Docker:
-```bash
-docker-compose -f /path/to/wyoming-clawdbot/docker-compose.yml logs -f
-docker-compose -f /path/to/wyoming-clawdbot/docker-compose.yml restart
-```
-
-## Configuration
-
-Default port: `10400` (commonly changed to `10600`)
-
-Options:
-- `--host` — bind address (default: 0.0.0.0)
-- `--port` — listening port
-- `--session-id` — persistent session ID for conversation context
-- `--agent` — Clawdbot agent ID
-- `--debug` — verbose logging
-
-## Home Assistant Setup
-
-1. Settings → Devices & Services → Add Integration
-2. Search "Wyoming Protocol"
-3. Enter host:port (e.g., `192.168.1.100:10600`)
-4. Set "clawdbot" as Conversation Agent in Voice Assistant pipeline
-
-## Troubleshooting
-
-**Service won't start:**
-```bash
-journalctl -u wyoming-clawdbot -n 100 --no-pager
-```
-
-**Connection refused in Home Assistant:**
-- Check service is running: `systemctl is-active wyoming-clawdbot`
-- Verify port is open: `ss -tlnp | grep 10600`
-- Check firewall: `sudo ufw status`
-
-**No response from Clawdbot:**
-- Verify Clawdbot is running: `clawdbot status`
-- Check session exists: `clawdbot sessions list`
+- Clawdbot running on the same host
+- Home Assistant with Wyoming integration
+- Docker (recommended) or Python 3.11+
 
 ## Links
 
