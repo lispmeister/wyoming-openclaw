@@ -28,9 +28,19 @@ Voice → Home Assistant → STT → Wyoming-Clawdbot → Clawdbot → Response 
 
 - [Clawdbot](https://clawd.bot) installed and running
 - Home Assistant with Wyoming integration
-- Python 3.11+
+- Python 3.11+ (or Docker)
 
 ## Installation
+
+### Docker Compose (recommended)
+
+```bash
+git clone https://github.com/vglafirov/wyoming-clawdbot.git
+cd wyoming-clawdbot
+docker-compose up -d
+```
+
+### Manual
 
 ```bash
 # Clone the repository
