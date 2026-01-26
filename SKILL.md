@@ -1,8 +1,6 @@
 ---
 name: wyoming-clawdbot
 description: Wyoming Protocol bridge for Home Assistant voice assistant integration with Clawdbot.
-homepage: https://github.com/vglafirov/wyoming-clawdbot
-metadata: {"clawdbot":{"emoji":"🎤","category":"home-automation","tags":["home-assistant","voice","wyoming","assist"]}}
 ---
 
 # Wyoming-Clawdbot
@@ -12,7 +10,7 @@ Bridge Home Assistant Assist voice commands to Clawdbot via Wyoming Protocol.
 ## What it does
 
 - Receives voice commands from Home Assistant Assist
-- Forwards them to Clawdbot for processing
+- Forwards them to Clawdbot for processing  
 - Returns AI responses to be spoken by Home Assistant TTS
 
 ## Setup
@@ -40,5 +38,3 @@ docker compose up -d
 ## Links
 
 - GitHub: https://github.com/vglafirov/wyoming-clawdbot
-- Clawdbot: https://clawd.bot
-- Wyoming Protocol: https://github.com/rhasspy/wyoming
