@@ -98,8 +98,8 @@ class OpenClawHandler:
         return True
 
     async def _call_openclaw(self, text: str) -> str:
-        """Call OpenClaw via OpenAI-compatible API and return response."""
-        url = f"{self.gateway_url}/v1/chat/completions"
+        """Call OpenClaw via OpenResponses API and return response."""
+        url = f"{self.gateway_url}/v1/responses"
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -107,8 +107,7 @@ class OpenClawHandler:
 
         payload = {
             "model": f"openclaw:{self.agent_id}",
-            "messages": [{"role": "user", "content": text}],
-            "stream": False,
+            "input": [{"type": "message", "role": "user", "content": text}],
         }
 
         # Include session_id if provided for context persistence
@@ -128,18 +127,23 @@ class OpenClawHandler:
 
             result = response.json()
 
-            # Extract the assistant's reply from OpenAI-compatible response
-            choices = result.get("choices", [])
-            if not choices:
-                raise RuntimeError("No choices in OpenClaw response")
-
-            message = choices[0].get("message", {})
-            content = message.get("content")
-
-            if not content:
-                raise RuntimeError("No content in OpenClaw response")
-
-            return content
+            # Extract the assistant's reply from OpenResponses format
+            if isinstance(result, dict):
+                output = result.get("output", [])
+                for item in reversed(output):
+                    if item.get("type") == "message" and item.get("role") == "assistant":
+                        content = item.get("content", [])
+                        if isinstance(content, list):
+                            for part in content:
+                                if part.get("type") == "output_text":
+                                    return part.get("text", "")
+                                elif part.get("type") == "text":
+                                    return part.get("text", "")
+                        elif isinstance(content, str):
+                            return content
+                # Fallback: return the raw output
+                return str(result)
+            return str(result)
 
     async def run(self) -> None:
         """Run the handler loop."""

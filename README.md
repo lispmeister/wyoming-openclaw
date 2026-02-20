@@ -87,21 +87,69 @@ docker compose up -d
 | `GATEWAY_TOKEN` | OpenClaw Gateway auth token | (required) |
 | `SESSION_ID` | Session ID for context persistence | `voice-assistant` |
 
-### Docker Network Setup
+## Docker Network Setup
 
-wyoming-openclaw must be on the same Docker network as your OpenClaw gateway for DNS resolution. Use the `openclaw-network` external network:
+wyoming-openclaw must be on the same Docker network as your OpenClaw gateway for DNS resolution.
+
+### Step 1: Find the gateway's network
+
+```bash
+# List all Docker containers
+docker ps | grep openclaw
+
+# Find which network the gateway is on
+docker inspect <gateway-container-name> | grep -A5 Networks
+```
+
+Example output:
+```
+"Networks": {
+    "openclaw-fix_default": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": ["openclaw-fix-openclaw-gateway-1"],
+```
+
+### Step 2: Update docker-compose.yml
+
+Edit `docker-compose.yml` to use the gateway's network:
 
 ```yaml
 services:
   wyoming-openclaw:
     ...
     networks:
-      - openclaw-network
+      - openclaw-fix_default  # Use the network name from Step 1
 
 networks:
-  openclaw-network:
+  openclaw-fix_default:
     external: true
 ```
+
+### Step 3: Run the container
+
+```bash
+docker compose up -d --build
+```
+
+### Troubleshooting DNS
+
+If you see `Name or service not known` errors:
+
+1. Check both containers are on the same network:
+   ```bash
+   docker network inspect <network-name> --format '{{range .Containers}}Name: {{.Name}}{{println}}{{end}}'
+   ```
+
+2. Use the gateway's IP address instead of hostname:
+   ```bash
+   GATEWAY_URL=http://<gateway-ip>:18789 docker compose up -d
+   ```
+
+3. Or reconnect the container to the correct network:
+   ```bash
+   docker network connect <network-name> wyoming-openclaw
+   ```
 
 ## Manual Installation
 
