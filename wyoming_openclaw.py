@@ -102,12 +102,9 @@ class OpenClawHandler:
     """Handle Wyoming events for OpenClaw + HA."""
 
     # Patterns for device control commands
-    LIGHT_ON_PATTERN = re.compile(r"(?:turn|switch)\s+(?:on|on\s+)?(the\s+)?(.+?)?\s*(?:light|lights|lamp)?s?", re.IGNORECASE)
-    LIGHT_OFF_PATTERN = re.compile(r"(?:turn|switch)\s+off\s+(the\s+)?(.+?)?\s*(?:light|lights|lamp)?s?", re.IGNORECASE)
-    SWITCH_ON_PATTERN = re.compile(r"(?:turn|switch)\s+(?:on)\s+(the\s+)?(.+?)?\s*(?:switch|outlet)?s?", re.IGNORECASE)
-    SWITCH_OFF_PATTERN = re.compile(r"(?:turn|switch)\s+off\s+(the\s+)?(.+?)?\s*(?:switch|outlet)?s?", re.IGNORECASE)
-    SET_CLIMATE_PATTERN = re.compile(r"(?:set|change|turn)\s+(?:the\s+)?(?:temperature|thermostat)\s*(?:to|on)?\s*(\d+)", re.IGNORECASE)
-    GET_STATE_PATTERN = re.compile(r"(?:what(?:'s| is)?\s+(?:the\s+)?(?:state|status)\s+(?:of\s+)?(.+)", re.IGNORECASE)
+    LIGHT_ON_PATTERN = re.compile(r"(?:turn|switch)\s+on\s+(?:the\s+)?(.+?)(?:\s+light)?$", re.IGNORECASE)
+    LIGHT_OFF_PATTERN = re.compile(r"(?:turn|switch)\s+off\s+(?:the\s+)?(.+?)(?:\s+light)?$", re.IGNORECASE)
+    GET_STATE_PATTERN = re.compile(r"what(?:'s| is)?\s+(?:the\s+)?(?:state|status|of)\s+(?:the\s+)?(.+)", re.IGNORECASE)
     GET_STATES_PATTERN = re.compile(r"(?:what(?:'s| is)\s+(?:on|active|connected)|list|show)\s+(?:all\s+)?(?:states|devices|entities)", re.IGNORECASE)
 
     def __init__(
@@ -146,24 +143,23 @@ class OpenClawHandler:
         if not self.ha_client:
             return None
 
-        text = text.lower()
+        text = text.lower().strip()
 
-        # Turn on light
-        match = re.search(r"(?:turn|switch)\s+(?:on|on\s+)?(?:the\s+)?(.+?)\s*(?:light|lights|lamp)?s?\s*(?:on)?$", text)
+        # Turn on light - "turn on living room"
+        match = self.LIGHT_ON_PATTERN.match(text)
         if match:
-            entity = match.group(1).strip()
-            if entity and not any(kw in entity for kw in ["off", "thermostat", "temperature", "climate"]):
-                # Try to find the entity
+            entity = match.group(1).strip() if match.group(1) else ""
+            if entity:
                 entity_id = f"light.{entity.replace(' ', '_')}"
                 try:
                     return await self.ha_client.call_service("light", "turn_on", entity_id)
                 except Exception:
                     pass
 
-        # Turn off light
-        match = re.search(r"(?:turn|switch)\s+off\s+(?:the\s+)?(.+?)\s*(?:light|lights|lamp)?s?$", text)
+        # Turn off light - "turn off living room"
+        match = self.LIGHT_OFF_PATTERN.match(text)
         if match:
-            entity = match.group(1).strip()
+            entity = match.group(1).strip() if match.group(1) else ""
             if entity:
                 entity_id = f"light.{entity.replace(' ', '_')}"
                 try:
@@ -171,18 +167,19 @@ class OpenClawHandler:
                 except Exception:
                     pass
 
-        # Get specific entity state
-        match = re.search(r"(?:what(?:'s| is)?\s+(?:the\s+)?(?:state|status)\s+(?:of\s+)?(.+)", text)
+        # Get specific entity state - "what's the state of living room"
+        match = self.GET_STATE_PATTERN.match(text)
         if match:
-            entity = match.group(1).strip()
-            entity_id = entity.replace(" ", "_")
-            try:
-                return await self.ha_client.get_state(entity_id)
-            except Exception:
-                pass
+            entity = match.group(1).strip() if match.group(1) else ""
+            if entity:
+                entity_id = entity.replace(" ", "_")
+                try:
+                    return await self.ha_client.get_state(entity_id)
+                except Exception:
+                    pass
 
         # Get all states
-        if "what's on" in text or "list devices" in text or "show states" in text:
+        if self.GET_STATES_PATTERN.search(text):
             try:
                 return await self.ha_client.get_states()
             except Exception as e:
