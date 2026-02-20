@@ -1,12 +1,28 @@
-version: "3.8"
-
 services:
   wyoming-openclaw:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: wyoming-openclaw
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - openclaw-fix_openclaw-network
+    ports:
+      - "10600:10600"
     environment:
-      - GATEWAY_URL=http://127.0.0.1:18789
-      - GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
-    command: ["--host", "0.0.0.0", "--port", "10600", "--session-id", "voice-assistant"]
+      GATEWAY_URL: ${GATEWAY_URL:-http://openclaw-fix-openclaw-gateway-1:18789}
+      GATEWAY_TOKEN: ${GATEWAY_TOKEN}
+      SESSION_ID: ${SESSION_ID:-voice-assistant}
+    command:
+      [
+        "python", "wyoming_openclaw.py",
+        "--host", "0.0.0.0",
+        "--port", "10600",
+        "--gateway-url", "${GATEWAY_URL:-http://openclaw-fix-openclaw-gateway-1:18789}",
+        "--token", "${GATEWAY_TOKEN}",
+        "--session-id", "${SESSION_ID:-voice-assistant}",
+      ]
+
+networks:
+  openclaw-fix_openclaw-network:
+    external: true
