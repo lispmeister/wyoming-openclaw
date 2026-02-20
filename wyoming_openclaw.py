@@ -80,12 +80,15 @@ class OpenClawHandler:
 
             try:
                 # Call OpenClaw agent
+                _LOGGER.debug("Calling OpenClaw with: %s", transcript.text)
                 response_text = await self._call_openclaw(transcript.text)
-                _LOGGER.info("OpenClaw response: %s", response_text)
+                _LOGGER.info("OpenClaw response: %s", response_text[:200] if len(response_text) > 200 else response_text)
 
                 # Return handled response
                 handled = Handled(text=response_text)
+                _LOGGER.debug("Sending Handled event with text: %s", response_text[:100])
                 await async_write_event(handled.event(), self.writer)
+                _LOGGER.debug("Sent Handled response to Wyoming client")
 
             except Exception as e:
                 _LOGGER.error("Error calling OpenClaw: %s", e)
@@ -111,6 +114,7 @@ class OpenClawHandler:
         }
 
         # Include session_id if provided for context persistence
+        # Using a fixed session key ensures the gateway uses full session context with tools
         if self.session_id:
             payload["user"] = self.session_id
 
