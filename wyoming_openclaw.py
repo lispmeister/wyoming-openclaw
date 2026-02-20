@@ -34,7 +34,8 @@ class OpenClawHandler:
         self.gateway_url = gateway_url.rstrip("/")
         self.token = token
         self.agent_id = agent_id
-        self.session_id = session_id
+        # Use a consistent session key for voice interactions to preserve context
+        self.session_key = f"voice-{session_id}" if session_id else "voice-default"
 
     async def handle_event(self, event: Event) -> bool:
         """Handle incoming Wyoming event."""
@@ -108,15 +109,18 @@ class OpenClawHandler:
             "Content-Type": "application/json",
         }
 
+        # Include session_id if provided for context persistence
+        # Using x-openclaw-session-key header to force session reuse with full skill context
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+            "x-openclaw-session-key": f"voice-{self.session_id or 'default'}",
+        }
+
         payload = {
             "model": f"openclaw:{self.agent_id}",
             "input": [{"type": "message", "role": "user", "content": text}],
         }
-
-        # Include session_id if provided for context persistence
-        # Using a fixed session key ensures the gateway uses full session context with tools
-        if self.session_id:
-            payload["user"] = self.session_id
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
