@@ -42,7 +42,12 @@ openclaw config get gateway.auth.token
 
 ```bash
 cd wyoming-openclaw
-echo "GATEWAY_TOKEN=your_token_here" > .env
+echo "GATEWAY_URL=http://your-gateway-ip:18789" > .env
+echo "GATEWAY_TOKEN=your_token_here" >> .env
+
+# Optional: Home Assistant for direct device control
+echo "HA_URL=http://your-ha-ip:8123" >> .env
+echo "HA_TOKEN=your_ha_long_lived_token" >> .env
 ```
 
 ### 3. Run the container
@@ -52,6 +57,23 @@ docker compose up -d --build
 ```
 
 ### 4. Configure Home Assistant
+
+#### Direct Device Control (Recommended)
+
+The bridge can directly control Home Assistant devices. Add to `.env`:
+
+```bash
+HA_URL=http://homeassistant:8123
+HA_TOKEN=your_long_lived_access_token
+```
+
+**Voice commands that work directly**:
+- "Turn on the living room light"
+- "Turn off the bedroom light"
+- "What's the temperature?"
+- "What devices are on?"
+
+#### Wyoming Integration
 
 1. Settings → Devices & Services → Add Integration
 2. Search "Wyoming Protocol"
@@ -86,6 +108,8 @@ docker compose up -d
 | `GATEWAY_URL` | OpenClaw Gateway URL | `http://openclaw-gateway:18789` |
 | `GATEWAY_TOKEN` | OpenClaw Gateway auth token | (required) |
 | `SESSION_ID` | Session ID for context persistence | `voice-assistant` |
+| `HA_URL` | Home Assistant URL | (optional) |
+| `HA_TOKEN` | Home Assistant long-lived token | (optional) |
 
 ## Docker Network Setup
 
