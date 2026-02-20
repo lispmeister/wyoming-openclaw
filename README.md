@@ -28,22 +28,91 @@ Voice → Home Assistant → STT → Wyoming-OpenClaw → OpenClaw Gateway API �
 
 - [OpenClaw](https://github.com/openclaw/openclaw) gateway running with OpenAI API enabled
 - Home Assistant with Wyoming integration
-- Python 3.11+ (or Docker)
+- Docker and Docker Compose (recommended)
 
-## Installation
+## Quick Start
 
-### Docker Compose (recommended)
+### 1. Get your gateway token
 
 ```bash
-git clone https://github.com/lispmeister/wyoming-openclaw.git
-cd wyoming-openclaw
-docker-compose up -d
+openclaw config get gateway.auth.token
 ```
 
-### Manual
+### 2. Create a .env file
 
 ```bash
-# Clone the repository
+cd wyoming-openclaw
+echo "GATEWAY_TOKEN=your_token_here" > .env
+```
+
+### 3. Run the container
+
+```bash
+docker compose up -d --build
+```
+
+### 4. Configure Home Assistant
+
+1. Settings → Devices & Services → Add Integration
+2. Search "Wyoming Protocol"
+3. Enter your server IP and port 10600 (e.g., `192.168.1.100:10600`)
+4. Select "openclaw" as the conversation agent
+5. Configure your voice assistant to use "openclaw"
+
+## Docker Deployment
+
+### Standalone
+
+Run wyoming-openclaw as a separate container on the same Docker network as your gateway:
+
+```bash
+cd wyoming-openclaw
+docker compose up -d
+```
+
+### With OpenClaw Gateway (Orchestration)
+
+To run both services together, use the orchestration compose file:
+
+```bash
+cd wyoming-openclaw/openclaw-orchestration
+docker compose up -d
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GATEWAY_URL` | OpenClaw Gateway URL | `http://openclaw-gateway:18789` |
+| `GATEWAY_TOKEN` | OpenClaw Gateway auth token | (required) |
+| `SESSION_ID` | Session ID for context persistence | `voice-assistant` |
+
+### Docker Network Setup
+
+wyoming-openclaw must be on the same Docker network as your OpenClaw gateway for DNS resolution. Use the `openclaw-network` external network:
+
+```yaml
+services:
+  wyoming-openclaw:
+    ...
+    networks:
+      - openclaw-network
+
+networks:
+  openclaw-network:
+    external: true
+```
+
+## Manual Installation
+
+### Prerequisites
+
+- Python 3.11+
+- OpenClaw gateway running with OpenAI API enabled
+
+### Setup
+
+```bash
 git clone https://github.com/lispmeister/wyoming-openclaw.git
 cd wyoming-openclaw
 
@@ -55,9 +124,30 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Run
+
+```bash
+python wyoming_openclaw.py --port 10600 \
+  --gateway-url http://127.0.0.1:18789 \
+  --token YOUR_GATEWAY_TOKEN \
+  --session-id voice-assistant
+```
+
+### Command Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--host` | Host to bind to | `0.0.0.0` |
+| `--port` | Port to listen on | `10400` |
+| `--gateway-url` | OpenClaw Gateway URL | `http://127.0.0.1:18789` |
+| `--token` | OpenClaw Gateway auth token | (required) |
+| `--agent-id` | OpenClaw agent ID | `main` |
+| `--session-id` | Session ID for context persistence | none (stateless) |
+| `--debug` | Enable debug logging | false |
+
 ## OpenClaw Gateway Configuration
 
-Ensure your OpenClaw gateway has the OpenAI-compatible API enabled:
+Enable the OpenAI-compatible API in your OpenClaw config:
 
 ```json
 {
@@ -71,85 +161,33 @@ Ensure your OpenClaw gateway has the OpenAI-compatible API enabled:
 }
 ```
 
-Get your gateway token:
+## Troubleshooting
+
+### DNS resolution fails
+
+If you see `Name or service not known` when connecting to the gateway:
+
+1. Ensure both containers are on the same Docker network
+2. Use the gateway's container name or IP address in `GATEWAY_URL`
+3. Check networks: `docker network inspect <network-name>`
+
+### Port not accessible
+
+If Home Assistant can't reach the service:
+
+1. Verify port 10600 is open on the host firewall:
+   ```bash
+   sudo ufw allow proto tcp from 192.168.1.0/24 to any port 10600
+   ```
+2. Check the container is listening: `docker logs wyoming-openclaw`
+
+### No response from gateway
+
+Check the logs for errors:
 
 ```bash
-openclaw config get gateway.auth.token
+docker logs wyoming-openclaw -f
 ```
-
-## Usage
-
-### Basic
-
-```bash
-python wyoming_openclaw.py --port 10600 \
-  --gateway-url http://127.0.0.1:18789 \
-  --token YOUR_GATEWAY_TOKEN
-```
-
-### With persistent session (recommended)
-
-```bash
-python wyoming_openclaw.py --port 10600 \
-  --gateway-url http://127.0.0.1:18789 \
-  --token YOUR_GATEWAY_TOKEN \
-  --session-id voice-assistant \
-  --agent-id main
-```
-
-### Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--host` | Host to bind to | `0.0.0.0` |
-| `--port` | Port to listen on | `10400` |
-| `--gateway-url` | OpenClaw Gateway URL | `http://127.0.0.1:18789` |
-| `--token` | OpenClaw Gateway auth token | (required) |
-| `--agent-id` | OpenClaw agent ID | `main` |
-| `--session-id` | Session ID for context persistence | none (stateless) |
-| `--debug` | Enable debug logging | false |
-
-## Systemd Service
-
-Create `/etc/systemd/system/wyoming-openclaw.service`:
-
-```ini
-[Unit]
-Description=Wyoming OpenClaw Bridge
-After=network.target
-
-[Service]
-Type=simple
-User=your-user
-WorkingDirectory=/path/to/wyoming-openclaw
-Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-ExecStart=/path/to/wyoming-openclaw/venv/bin/python wyoming_openclaw.py \
-  --port 10600 \
-  --gateway-url http://127.0.0.1:18789 \
-  --token YOUR_GATEWAY_TOKEN \
-  --session-id voice-assistant
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Then:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable wyoming-openclaw
-sudo systemctl start wyoming-openclaw
-```
-
-## Home Assistant Configuration
-
-1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **Wyoming Protocol**
-3. Enter the host and port (e.g., `192.168.1.100:10600`)
-4. The "openclaw" conversation agent will appear
-5. Configure your Voice Assistant pipeline to use "openclaw" as the Conversation Agent
 
 ## License
 
