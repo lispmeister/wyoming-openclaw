@@ -41,6 +41,7 @@ openclaw config get gateway.auth.token
 ### 2. Create a .env file
 
 ```bash
+git clone https://github.com/lispmeister/wyoming-openclaw.git
 cd wyoming-openclaw
 cp .env-template .env
 # Edit .env and fill in GATEWAY_URL, GATEWAY_TOKEN, and OPENCLAW_NETWORK
