@@ -6,29 +6,30 @@ services:
     container_name: wyoming-openclaw
     restart: unless-stopped
     networks:
-      - openclaw-fix_default
+      - openclaw-network
     ports:
       - "10600:10600"
     environment:
-      GATEWAY_URL: ${GATEWAY_URL:-http://openclaw-fix-openclaw-gateway-1:18789}
+      GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN}
       SESSION_ID: ${SESSION_ID:-voice-assistant}
-      # Home Assistant credentials for direct device control
-      HA_URL: ${HA_URL:-http://homeassistant:8123}
-      HA_TOKEN: ${HA_TOKEN}
+      # Home Assistant credentials for direct device control (optional)
+      HA_URL: ${HA_URL:-}
+      HA_TOKEN: ${HA_TOKEN:-}
       DEBUG: ${DEBUG:-}
     command:
       [
         "python", "wyoming_openclaw.py",
         "--host", "0.0.0.0",
         "--port", "10600",
-        "--gateway-url", "${GATEWAY_URL:-http://openclaw-fix-openclaw-gateway-1:18789}",
+        "--gateway-url", "${GATEWAY_URL}",
         "--token", "${GATEWAY_TOKEN}",
         "--session-id", "${SESSION_ID:-voice-assistant}",
-        "--ha-url", "${HA_URL:-http://homeassistant:8123}",
-        "--ha-token", "${HA_TOKEN}",
+        "--ha-url", "${HA_URL:-}",
+        "--ha-token", "${HA_TOKEN:-}",
       ]
 
 networks:
-  openclaw-fix_default:
+  openclaw-network:
+    name: ${OPENCLAW_NETWORK}
     external: true

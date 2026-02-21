@@ -42,13 +42,11 @@ openclaw config get gateway.auth.token
 
 ```bash
 cd wyoming-openclaw
-echo "GATEWAY_URL=http://your-gateway-ip:18789" > .env
-echo "GATEWAY_TOKEN=your_token_here" >> .env
-
-# Optional: Home Assistant for direct device control
-echo "HA_URL=http://your-ha-ip:8123" >> .env
-echo "HA_TOKEN=your_ha_long_lived_token" >> .env
+cp .env-template .env
+# Edit .env and fill in GATEWAY_URL, GATEWAY_TOKEN, and OPENCLAW_NETWORK
 ```
+
+See [`.env-template`](.env-template) for all available options and instructions for finding each value.
 
 ### 3. Run the container
 
@@ -114,23 +112,22 @@ docker compose up -d
 
 ## Docker Network Setup
 
-The standalone `docker-compose.yml` must join the same Docker network as your OpenClaw gateway.
+The standalone `docker-compose.yml` must join the same Docker network as your OpenClaw gateway. Set `OPENCLAW_NETWORK` in your `.env` to that network's name.
 
-Find the gateway's network name:
+To find the network name:
 
 ```bash
-docker inspect <gateway-container> --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}'
+docker inspect <gateway-container> \
+  --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}'
 ```
 
-Then edit `docker-compose.yml` to match:
+Then set it in `.env`:
 
-```yaml
-networks:
-  your-network-name:   # replace with the name from above
-    external: true
+```bash
+OPENCLAW_NETWORK=openclaw_default
 ```
 
-The orchestration compose (`openclaw-orchestration/docker-compose.yml`) creates its own shared network automatically — no setup needed.
+The orchestration compose (`openclaw-orchestration/docker-compose.yml`) creates its own shared network automatically — no network configuration needed.
 
 ## Manual Installation
 
