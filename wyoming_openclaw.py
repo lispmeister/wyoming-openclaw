@@ -3,7 +3,6 @@
 
 import argparse
 import asyncio
-import json
 import logging
 import os
 import re
@@ -17,19 +16,31 @@ from wyoming.handle import Handled, NotHandled
 
 _LOGGER = logging.getLogger(__name__)
 
+# Shared timeouts
+_HA_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+_OPENCLAW_TIMEOUT = httpx.Timeout(60.0, connect=5.0)
+
 
 class HomeAssistantClient:
     """Simple HA API client for device control."""
 
     def __init__(self, url: str, token: str) -> None:
         self.url = url.rstrip("/")
-        self.token = token
-        self.headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
+        self._client = httpx.AsyncClient(
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            timeout=_HA_TIMEOUT,
+        )
 
-    async def call_service(self, domain: str, service: str, entity_id: Optional[str] = None, data: Optional[dict] = None) -> str:
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    async def call_service(
+        self, domain: str, service: str,
+        entity_id: Optional[str] = None, data: Optional[dict] = None,
+    ) -> str:
         """Call a Home Assistant service."""
         url = f"{self.url}/api/services/{domain}/{service}"
         payload = {}
@@ -38,13 +49,7 @@ class HomeAssistantClient:
         if data:
             payload.update(data)
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                headers=self.headers,
-                json=payload,
-                timeout=10.0,
-            )
+        response = await self._client.post(url, json=payload)
 
         if response.status_code == 200:
             return f"Done! {service} executed on {entity_id or domain}"
@@ -54,13 +59,7 @@ class HomeAssistantClient:
     async def get_state(self, entity_id: str) -> str:
         """Get an entity state."""
         url = f"{self.url}/api/states/{entity_id}"
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url,
-                headers=self.headers,
-                timeout=10.0,
-            )
+        response = await self._client.get(url)
 
         if response.status_code == 200:
             data = response.json()
@@ -73,17 +72,10 @@ class HomeAssistantClient:
     async def get_states(self) -> str:
         """Get all states."""
         url = f"{self.url}/api/states"
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url,
-                headers=self.headers,
-                timeout=10.0,
-            )
+        response = await self._client.get(url)
 
         if response.status_code == 200:
             states = response.json()
-            # Return first 20 states as a summary
             lines = []
             for state in states[:20]:
                 entity_id = state.get("entity_id", "unknown")
@@ -102,10 +94,21 @@ class OpenClawHandler:
     """Handle Wyoming events for OpenClaw + HA."""
 
     # Patterns for device control commands
-    LIGHT_ON_PATTERN = re.compile(r"(?:turn|switch)\s+on\s+(?:the\s+)?(.+?)(?:\s+light)?$", re.IGNORECASE)
-    LIGHT_OFF_PATTERN = re.compile(r"(?:turn|switch)\s+off\s+(?:the\s+)?(.+?)(?:\s+light)?$", re.IGNORECASE)
+    DEVICE_ON_PATTERN = re.compile(r"(?:turn|switch)\s+on\s+(?:the\s+)?(.+?)(?:\s+(?:light|switch|fan))?$", re.IGNORECASE)
+    DEVICE_OFF_PATTERN = re.compile(r"(?:turn|switch)\s+off\s+(?:the\s+)?(.+?)(?:\s+(?:light|switch|fan))?$", re.IGNORECASE)
     GET_STATE_PATTERN = re.compile(r"what(?:'s| is)?\s+(?:the\s+)?(?:state|status|of)\s+(?:the\s+)?(.+)", re.IGNORECASE)
     GET_STATES_PATTERN = re.compile(r"(?:what(?:'s| is)\s+(?:on|active|connected)|list|show)\s+(?:all\s+)?(?:states|devices|entities)", re.IGNORECASE)
+
+    # Map of keywords to HA domains for entity ID guessing
+    DOMAIN_KEYWORDS = {
+        "light": "light",
+        "lamp": "light",
+        "switch": "switch",
+        "fan": "fan",
+        "cover": "cover",
+        "blind": "cover",
+        "curtain": "cover",
+    }
 
     def __init__(
         self,
@@ -125,18 +128,27 @@ class OpenClawHandler:
         self.agent_id = agent_id
         self.session_key = f"voice-{session_id}" if session_id else "voice-default"
         self.ha_client = None
+        self._openclaw_client = httpx.AsyncClient(timeout=_OPENCLAW_TIMEOUT)
         if ha_url and ha_token:
             self.ha_client = HomeAssistantClient(ha_url, ha_token)
             _LOGGER.info("HA client initialized for direct device control")
 
-    def _extract_entity_id(self, name: str) -> str:
-        """Convert a natural language entity name to an entity_id."""
-        # Convert "living room light" to "light.living_room"
-        # This is a simple implementation - can be enhanced
+    def _guess_entity_id(self, name: str) -> str:
+        """Guess an entity_id from a natural language name.
+
+        Checks for domain keywords in the name (e.g. "living room light" -> light.living_room).
+        Defaults to light domain if no keyword is found.
+        """
         name = name.lower().strip()
-        name = re.sub(r"[^\w\s]", "", name)  # Remove special chars
-        name = re.sub(r"\s+", "_", name)  # Spaces to underscores
-        return f"light.{name}" if "light" not in name else f"light.{name.replace('light_', '').replace('light', '')}"
+        domain = "light"  # default
+        for keyword, d in self.DOMAIN_KEYWORDS.items():
+            if keyword in name:
+                domain = d
+                name = name.replace(keyword, "").strip()
+                break
+        slug = re.sub(r"[^\w\s]", "", name)
+        slug = re.sub(r"\s+", "_", slug).strip("_")
+        return f"{domain}.{slug}"
 
     async def _handle_device_command(self, text: str) -> Optional[str]:
         """Try to handle device control commands directly."""
@@ -145,27 +157,29 @@ class OpenClawHandler:
 
         text = text.lower().strip()
 
-        # Turn on light - "turn on living room"
-        match = self.LIGHT_ON_PATTERN.match(text)
+        # Turn on device - "turn on living room light"
+        match = self.DEVICE_ON_PATTERN.match(text)
         if match:
             entity = match.group(1).strip() if match.group(1) else ""
             if entity:
-                entity_id = f"light.{entity.replace(' ', '_')}"
+                entity_id = self._guess_entity_id(entity)
+                domain = entity_id.split(".")[0]
                 try:
-                    return await self.ha_client.call_service("light", "turn_on", entity_id)
-                except Exception:
-                    pass
+                    return await self.ha_client.call_service(domain, "turn_on", entity_id)
+                except Exception as e:
+                    _LOGGER.warning("HA turn_on failed for %s: %s", entity_id, e)
 
-        # Turn off light - "turn off living room"
-        match = self.LIGHT_OFF_PATTERN.match(text)
+        # Turn off device - "turn off living room light"
+        match = self.DEVICE_OFF_PATTERN.match(text)
         if match:
             entity = match.group(1).strip() if match.group(1) else ""
             if entity:
-                entity_id = f"light.{entity.replace(' ', '_')}"
+                entity_id = self._guess_entity_id(entity)
+                domain = entity_id.split(".")[0]
                 try:
-                    return await self.ha_client.call_service("light", "turn_off", entity_id)
-                except Exception:
-                    pass
+                    return await self.ha_client.call_service(domain, "turn_off", entity_id)
+                except Exception as e:
+                    _LOGGER.warning("HA turn_off failed for %s: %s", entity_id, e)
 
         # Get specific entity state - "what's the state of living room"
         match = self.GET_STATE_PATTERN.match(text)
@@ -175,14 +189,15 @@ class OpenClawHandler:
                 entity_id = entity.replace(" ", "_")
                 try:
                     return await self.ha_client.get_state(entity_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    _LOGGER.warning("HA get_state failed for %s: %s", entity_id, e)
 
         # Get all states
         if self.GET_STATES_PATTERN.search(text):
             try:
                 return await self.ha_client.get_states()
             except Exception as e:
+                _LOGGER.error("HA get_states failed: %s", e)
                 return f"Error getting states: {e}"
 
         return None
@@ -269,34 +284,30 @@ class OpenClawHandler:
             "input": [{"type": "message", "role": "user", "content": text}],
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                headers=headers,
-                json=payload,
-                timeout=60.0,
-            )
+        response = await self._openclaw_client.post(
+            url, headers=headers, json=payload,
+        )
 
-            if response.status_code != 200:
-                raise RuntimeError(f"OpenClaw API error: {response.status_code} - {response.text}")
+        if response.status_code != 200:
+            raise RuntimeError(f"OpenClaw API error: {response.status_code} - {response.text}")
 
-            result = response.json()
+        result = response.json()
 
-            if isinstance(result, dict):
-                output = result.get("output", [])
-                for item in reversed(output):
-                    if item.get("type") == "message" and item.get("role") == "assistant":
-                        content = item.get("content", [])
-                        if isinstance(content, list):
-                            for part in content:
-                                if part.get("type") == "output_text":
-                                    return part.get("text", "")
-                                elif part.get("type") == "text":
-                                    return part.get("text", "")
-                        elif isinstance(content, str):
-                            return content
-                return str(result)
+        if isinstance(result, dict):
+            output = result.get("output", [])
+            for item in reversed(output):
+                if item.get("type") == "message" and item.get("role") == "assistant":
+                    content = item.get("content", [])
+                    if isinstance(content, list):
+                        for part in content:
+                            if part.get("type") == "output_text":
+                                return part.get("text", "")
+                            elif part.get("type") == "text":
+                                return part.get("text", "")
+                    elif isinstance(content, str):
+                        return content
             return str(result)
+        return str(result)
 
     async def run(self) -> None:
         """Run the handler loop."""
@@ -309,20 +320,25 @@ class OpenClawHandler:
                     break
         finally:
             self.writer.close()
+            await self._openclaw_client.aclose()
+            if self.ha_client:
+                await self.ha_client.close()
 
 
 async def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Wyoming server for OpenClaw + Home Assistant")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=10400, help="Port to listen on")
+    parser.add_argument("--port", type=int, default=10600, help="Port to listen on")
     parser.add_argument("--gateway-url", default=os.environ.get("GATEWAY_URL", "http://127.0.0.1:18789"), help="OpenClaw Gateway URL")
     parser.add_argument("--token", default=os.environ.get("GATEWAY_TOKEN"), required=os.environ.get("GATEWAY_TOKEN") is None, help="OpenClaw Gateway auth token")
     parser.add_argument("--agent-id", default="main", help="OpenClaw agent ID")
     parser.add_argument("--ha-url", default=os.environ.get("HA_URL"), help="Home Assistant URL (optional, for direct device control)")
     parser.add_argument("--ha-token", default=os.environ.get("HA_TOKEN"), help="Home Assistant long-lived access token (optional)")
     parser.add_argument("--session-id", default=os.environ.get("SESSION_ID"), help="Session ID for context persistence")
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--debug", action="store_true",
+                        default=os.environ.get("DEBUG", "").lower() in ("1", "true", "yes"),
+                        help="Enable debug logging")
     args = parser.parse_args()
 
     logging.basicConfig(

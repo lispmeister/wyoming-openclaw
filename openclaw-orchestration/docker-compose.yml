@@ -41,6 +41,10 @@ services:
     environment:
       GATEWAY_URL: http://openclaw-gateway:18789
       GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      SESSION_ID: ${OPENCLAW_SESSION_ID:-voice-assistant}
+      HA_URL: ${HA_URL:-}
+      HA_TOKEN: ${HA_TOKEN:-}
+      DEBUG: ${DEBUG:-}
     depends_on:
       - openclaw-gateway
     command:
@@ -50,7 +54,9 @@ services:
         "--port", "10600",
         "--gateway-url", "http://openclaw-gateway:18789",
         "--token", "${OPENCLAW_GATEWAY_TOKEN}",
-        "--session-id", "voice-assistant",
+        "--session-id", "${OPENCLAW_SESSION_ID:-voice-assistant}",
+        "--ha-url", "${HA_URL:-}",
+        "--ha-token", "${HA_TOKEN:-}",
       ]
 
   openclaw-cli:

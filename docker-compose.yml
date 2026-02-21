@@ -16,6 +16,7 @@ services:
       # Home Assistant credentials for direct device control
       HA_URL: ${HA_URL:-http://homeassistant:8123}
       HA_TOKEN: ${HA_TOKEN}
+      DEBUG: ${DEBUG:-}
     command:
       [
         "python", "wyoming_openclaw.py",
