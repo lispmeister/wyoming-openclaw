@@ -68,9 +68,9 @@ HA_TOKEN=your_long_lived_access_token
 ```
 
 **Voice commands that work directly**:
-- "Turn on the living room light"
-- "Turn off the bedroom light"
-- "What's the temperature?"
+- "Turn on the living room light" (lights, switches, fans, covers)
+- "Turn off the bedroom fan"
+- "What's the state of the kitchen light?"
 - "What devices are on?"
 
 #### Wyoming Integration
@@ -110,70 +110,27 @@ docker compose up -d
 | `SESSION_ID` | Session ID for context persistence | `voice-assistant` |
 | `HA_URL` | Home Assistant URL | (optional) |
 | `HA_TOKEN` | Home Assistant long-lived token | (optional) |
+| `DEBUG` | Enable debug logging (`1`, `true`, `yes`) | (off) |
 
 ## Docker Network Setup
 
-wyoming-openclaw must be on the same Docker network as your OpenClaw gateway for DNS resolution.
+The standalone `docker-compose.yml` must join the same Docker network as your OpenClaw gateway.
 
-### Step 1: Find the gateway's network
+Find the gateway's network name:
 
 ```bash
-# List all Docker containers
-docker ps | grep openclaw
-
-# Find which network the gateway is on
-docker inspect <gateway-container-name> | grep -A5 Networks
+docker inspect <gateway-container> --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}'
 ```
 
-Example output:
-```
-"Networks": {
-    "openclaw-fix_default": {
-        "IPAMConfig": null,
-        "Links": null,
-        "Aliases": ["openclaw-fix-openclaw-gateway-1"],
-```
-
-### Step 2: Update docker-compose.yml
-
-Edit `docker-compose.yml` to use the gateway's network:
+Then edit `docker-compose.yml` to match:
 
 ```yaml
-services:
-  wyoming-openclaw:
-    ...
-    networks:
-      - openclaw-fix_default  # Use the network name from Step 1
-
 networks:
-  openclaw-fix_default:
+  your-network-name:   # replace with the name from above
     external: true
 ```
 
-### Step 3: Run the container
-
-```bash
-docker compose up -d --build
-```
-
-### Troubleshooting DNS
-
-If you see `Name or service not known` errors:
-
-1. Check both containers are on the same network:
-   ```bash
-   docker network inspect <network-name> --format '{{range .Containers}}Name: {{.Name}}{{println}}{{end}}'
-   ```
-
-2. Use the gateway's IP address instead of hostname:
-   ```bash
-   GATEWAY_URL=http://<gateway-ip>:18789 docker compose up -d
-   ```
-
-3. Or reconnect the container to the correct network:
-   ```bash
-   docker network connect <network-name> wyoming-openclaw
-   ```
+The orchestration compose (`openclaw-orchestration/docker-compose.yml`) creates its own shared network automatically — no setup needed.
 
 ## Manual Installation
 
@@ -210,27 +167,22 @@ python wyoming_openclaw.py --port 10600 \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--host` | Host to bind to | `0.0.0.0` |
-| `--port` | Port to listen on | `10400` |
+| `--port` | Port to listen on | `10600` |
 | `--gateway-url` | OpenClaw Gateway URL | `http://127.0.0.1:18789` |
 | `--token` | OpenClaw Gateway auth token | (required) |
 | `--agent-id` | OpenClaw agent ID | `main` |
 | `--session-id` | Session ID for context persistence | none (stateless) |
-| `--debug` | Enable debug logging | false |
+| `--debug` | Enable debug logging (also via `DEBUG` env var) | false |
+| `--ha-url` | Home Assistant URL for direct device control | (optional) |
+| `--ha-token` | Home Assistant long-lived access token | (optional) |
 
 ## OpenClaw Gateway Configuration
 
 Enable the OpenAI-compatible API in your OpenClaw config:
 
-```json
-{
-  "gateway": {
-    "http": {
-      "endpoints": {
-        "chatCompletions": { "enabled": true }
-      }
-    }
-  }
-}
+```bash
+openclaw config set gateway.http.endpoints.responses.enabled true
+openclaw gateway restart
 ```
 
 ## Troubleshooting
